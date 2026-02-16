@@ -1,0 +1,166 @@
+/* Reset dasar */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Body */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #f5f7fa;
+    padding: 40px;
+    color: #333;
+}
+
+/* Container */
+.container {
+    max-width: 800px;
+    margin: auto;
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+}
+
+/* Header */
+h1 {
+    margin-bottom: 20px;
+    color: #222;
+}
+
+/* Tombol tambah */
+.add-btn {
+    display: inline-block;
+    margin-bottom: 20px;
+    padding: 10px 16px;
+    background: #4CAF50;
+    color: white;
+    border-radius: 8px;
+    font-weight: bold;
+    transition: 0.3s;
+}
+
+.add-btn:hover {
+    background: #43a047;
+}
+
+/* List */
+ul {
+    list-style: none;
+}
+
+/* Item */
+li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px;
+    background: #f9f9f9;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    transition: 0.2s;
+}
+
+li:hover {
+    background: #eef2f7;
+}
+
+/* Produk info */
+.product-info {
+    font-size: 16px;
+}
+
+/* Actions */
+.actions a,
+.actions button {
+    margin-left: 10px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+/* Edit */
+.actions a {
+    background: #2196F3;
+    color: white;
+}
+
+.actions a:hover {
+    background: #1e88e5;
+}
+
+/* Delete */
+.actions button {
+    background: #e53935;
+    color: white;
+}
+
+.actions button:hover {
+    background: #d32f2f;
+}
+
+/* Form Container */
+.form-container {
+    max-width: 500px;
+    margin: auto;
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+}
+
+/* Form Title */
+.form-container h1 {
+    margin-bottom: 20px;
+}
+
+/* Input */
+form input {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 15px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    font-size: 14px;
+    transition: 0.2s;
+}
+
+form input:focus {
+    outline: none;
+    border-color: #4CAF50;
+    box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
+/* Button Primary */
+.primary-btn {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    background: #4CAF50;
+    color: white;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+.primary-btn:hover {
+    background: #43a047;
+}
+
+/* Back Link */
+.back-link {
+    display: inline-block;
+    margin-top: 15px;
+    text-decoration: none;
+    color: #555;
+}
+
+.back-link:hover {
+    color: #000;
+}

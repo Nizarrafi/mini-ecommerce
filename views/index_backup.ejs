@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mini Ecommerce</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Mini Ecommerce</h1>
+
+        <a href="/add-product" class="add-btn">+ Tambah Produk</a>
+
+        <ul>
+            <% products.forEach(product => { %>
+                <li>
+                    <div class="product-info">
+                        <strong><%= product.name %></strong>
+                        - <%= new Intl.NumberFormat("id-ID", { 
+                                style: "currency", 
+                                currency: "IDR" 
+                            }).format(product.price) %>
+                    </div>
+
+                    <div class="actions">
+                        <a href="/edit-product/<%= product.id %>">Edit</a>
+
+                        <form action="/delete-product/<%= product.id %>" method="POST" style="display:inline;">
+                            <button type="submit">Delete</button>
+                        </form>
+                    </div>
+                </li>
+            <% }) %>
+        </ul>
+    </div>
+</body>
+</html>

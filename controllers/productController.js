@@ -32,8 +32,7 @@ const productController = {
                     Bucket: process.env.AWS_BUCKET_NAME,
                     Key: `products/${Date.now()}_${req.file.originalname}`,
                     Body: req.file.buffer,
-                    ContentType: req.file.mimetype,
-                    ACL: 'public-read'
+                    ContentType: req.file.mimetype
                 };
 
                 try {
@@ -80,8 +79,7 @@ const productController = {
                     Bucket: process.env.AWS_BUCKET_NAME,
                     Key: `products/${Date.now()}_${req.file.originalname}`,
                     Body: req.file.buffer,
-                    ContentType: req.file.mimetype,
-                    ACL: 'public-read'
+                    ContentType: req.file.mimetype
                 };
 
                 try {

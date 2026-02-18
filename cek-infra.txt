@@ -1,10 +1,16 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Advanced 3-Tier Architecture: Public Nginx Proxy, Private App Server, Private RDS, NAT Gateway'
+Description: 'Advanced 3-Tier Architecture: Public Nginx Proxy, Private App Server, Private RDS'
 
 Parameters:
   DBPassword:
     Type: String
     Description: 'Password for RDS Database'
+    NoEcho: true
+    MinLength: 8
+
+  JWTSecretParam:
+    Type: String
+    Description: 'Input your JWT Secret here'
     NoEcho: true
     MinLength: 8
 
@@ -35,7 +41,7 @@ Resources:
       VpcId: !Ref VPC
       InternetGatewayId: !Ref InternetGateway
 
-  # 1 Public Subnet (for Proxy & NAT)
+  # 1 Public Subnet (for App Server)
   PublicSubnet:
     Type: AWS::EC2::Subnet
     Properties:
@@ -47,7 +53,7 @@ Resources:
         - Key: Name
           Value: MeCommerce-PublicSubnet
 
-  # 1 Private Subnet (for App & RDS)
+  # 1 Private Subnet (for RDS) - Primary
   PrivateSubnet:
     Type: AWS::EC2::Subnet
     Properties:
@@ -58,23 +64,25 @@ Resources:
         - Key: Name
           Value: MeCommerce-PrivateSubnet
 
-  # NAT Gateway for Private Subnet Outbound Access
-  NatEIP:
-    Type: AWS::EC2::EIP
+  # 1 Private Subnet (for RDS) - Secondary (Required for RDS Multi-AZ/Subnet Group)
+  PrivateSubnetAZ2:
+    Type: AWS::EC2::Subnet
     Properties:
-      Domain: vpc
-
-  NatGateway:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt NatEIP.AllocationId
-      SubnetId: !Ref PublicSubnet
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: MeCommerce-PrivateSubnet-AZ2
 
   # Routing
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: MeCommerce-PublicRouteTable
 
   PublicRoute:
     Type: AWS::EC2::Route
@@ -90,17 +98,14 @@ Resources:
       SubnetId: !Ref PublicSubnet
       RouteTableId: !Ref PublicRouteTable
 
+  # Private Route Table (No Internet Access routes needed for RDS-only subnet)
   PrivateRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref VPC
-
-  PrivateRoute:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway
+      Tags:
+        - Key: Name
+          Value: MeCommerce-PrivateRouteTable
 
   PrivSubRouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
@@ -108,13 +113,19 @@ Resources:
       SubnetId: !Ref PrivateSubnet
       RouteTableId: !Ref PrivateRouteTable
 
+  PrivSubAZ2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetAZ2
+      RouteTableId: !Ref PrivateRouteTable
+
   # ===========================
   # SECURITY GROUPS
   # ===========================
-  ProxySecurityGroup:
+  AppSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Allow HTTP/S and SSH to Proxy
+      GroupDescription: Allow Web and SSH
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -129,21 +140,10 @@ Resources:
           FromPort: 22
           ToPort: 22
           CidrIp: 0.0.0.0/0
-
-  AppSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Allow App Port (3000) from Proxy ONLY
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 3000
           ToPort: 3000
-          SourceSecurityGroupId: !Ref ProxySecurityGroup
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          SourceSecurityGroupId: !Ref ProxySecurityGroup # Access via Bastion
+          CidrIp: 0.0.0.0/0
 
   RDSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -159,18 +159,6 @@ Resources:
   # ===========================
   # DATABASE (RDS)
   # ===========================
-  # Need at least 2 subnets for RDS Subnet Group even if they are in same AZ or differently
-  # Let's add a dummy Private Subnet in another AZ for RDS
-  PrivateSubnetAZ2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      CidrBlock: 10.0.3.0/24
-      AvailabilityZone: !Select [1, !GetAZs '']
-      Tags:
-        - Key: Name
-          Value: MeCommerce-PrivateSubnet-AZ2
-
   DBSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
@@ -193,6 +181,8 @@ Resources:
         - !Ref RDSSecurityGroup
       MultiAZ: false
       PubliclyAccessible: false
+      DeleteAutomatedBackups: true
+      BackupRetentionPeriod: 0
 
   # ===========================
   # STORAGE (S3) & IAM
@@ -233,159 +223,113 @@ Resources:
       Policies:
         - PolicyName: S3Access
           PolicyDocument:
-             Version: '2012-10-17'
-             Statement:
-               - Effect: Allow
-                 Action: ['s3:PutObject', 's3:GetObject', 's3:DeleteObject']
-                 Resource: !Join ['', ['arn:aws:s3:::', !Ref S3Bucket, '/*']]
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ['s3:PutObject', 's3:GetObject', 's3:DeleteObject']
+                Resource: !Join ['', ['arn:aws:s3:::', !Ref S3Bucket, '/*']]
 
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties: { Roles: [!Ref EC2Role] }
 
   # ===========================
-  # ROUTE 53 (PRIVATE DNS)
+  # EC2 INSTANCE (Unified App & Proxy)
   # ===========================
-  PrivateHostedZone:
-    Type: AWS::Route53::HostedZone
-    Properties:
-      Name: mecommerce.com
-      VPCs: [{ VPCId: !Ref VPC, VPCRegion: !Ref AWS::Region }]
-
-  DBRecord:
-    Type: AWS::Route53::RecordSet
-    Properties:
-      HostedZoneId: !Ref PrivateHostedZone
-      Name: db.mecommerce.com
-      Type: CNAME
-      TTL: '300'
-      ResourceRecords: [!GetAtt DBInstance.Endpoint.Address]
-
-  AppRecord:
-    Type: AWS::Route53::RecordSet
-    Properties:
-      HostedZoneId: !Ref PrivateHostedZone
-      Name: app.mecommerce.com
-      Type: A
-      TTL: '300'
-      ResourceRecords: [!GetAtt AppServer.PrivateIp]
-
-  # ===========================
-  # EC2 INSTANCES
-  # ===========================
-  # 1. Private App Server
   AppServer:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t3.micro
-      ImageId: ami-0d5f3e23c61fbb3e8
+      ImageId: ami-0d5f3e23c61fbb3e8 # Amazon Linux 2023
       KeyName: !Ref KeyName
-      SubnetId: !Ref PrivateSubnet
+      SubnetId: !Ref PublicSubnet
       SecurityGroupIds: [!Ref AppSecurityGroup]
       IamInstanceProfile: !Ref EC2InstanceProfile
-      Tags: [{ Key: Name, Value: MeCommerce-AppServer }]
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          sudo su
+          # 1. Install Dependencies
           dnf update -y
-          dnf install -y nodejs git
+          dnf install -y nodejs git nginx openssl
           npm install pm2 -g
-          
+
+          # 2. Setup Application
           cd /home/ec2-user
-          # Ensure env is set for root or user
-          export HOME=/home/ec2-user
-          
+          # Clone sebagai root tidak apa-apa, nanti kita chown
           git clone https://github.com/Nizarrafi/mini-ecommerce.git app
           cd app
           npm install
-          
-          echo "DB_HOST=db.mecommerce.com" >> .env
+
+          # 3. Configure Environment Variables (Pastikan di folder /app)
+          echo "DB_HOST=${DBInstance.Endpoint.Address}" > .env
           echo "DB_USER=postgres" >> .env
           echo "DB_PASS=${DBPassword}" >> .env
           echo "DB_NAME=miniecommerce" >> .env
-          echo "JWT_SECRET=supersecretkey" >> .env
+          echo "JWT_SECRET=${JWTSecretParam}" >> .env
           echo "AWS_BUCKET_NAME=${S3Bucket}" >> .env
           echo "AWS_REGION=${AWS::Region}" >> .env
-          
-          pm2 start server.js --name app
-          pm2 save
-          pm2 startup
-          # Fix pm2 startup command for amazon-linux-2023 if needed, or rely on active setup
-          env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u ec2-user --hp /home/ec2-user
+
+          # 4. Fix Permissions & Start App
+          cd /home/ec2-user
+          chown -R ec2-user:ec2-user app
+          cd app
+          # Jalankan PM2 sebagai user ec2-user agar aman
+          sudo -u ec2-user pm2 start server.js --name app
+          sudo -u ec2-user pm2 save
+          env PATH=$PATH:/usr/bin /usr/local/lib/node_modules/pm2/bin/pm2 startup systemd -u ec2-user --hp /home/ec2-user
           systemctl start pm2-ec2-user
 
-
-  # 2. Public Proxy Server
-  ProxyServer:
-    Type: AWS::EC2::Instance
-    Properties:
-      InstanceType: t3.micro
-      ImageId: ami-0d5f3e23c61fbb3e8
-      KeyName: !Ref KeyName
-      SubnetId: !Ref PublicSubnet
-      SecurityGroupIds: [!Ref ProxySecurityGroup]
-      Tags: [{ Key: Name, Value: MeCommerce-ProxyServer }]
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          # Ensure we are root
-          sudo su
-          
-          # Amazon Linux 2023 Setup
-          dnf update -y
-          dnf install -y nginx openssl
-          
-          # Generate Self-Signed Cert
+          # 5. Setup Nginx (Edit Langsung File Utama)
           mkdir -p /etc/nginx/ssl
           openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
             -keyout /etc/nginx/ssl/server.key \
             -out /etc/nginx/ssl/server.crt \
-            -subj "/C=ID/ST=Jawa/L=Jakarta/O=MeCommerce/OU=IT/CN=mecommerce.com"
+            -subj "/CN=localhost"
           
-          # Configure Nginx with resolver to prevent crash if DNS is not ready
-          cat <<EOF > /etc/nginx/conf.d/mecommerce.conf
-          server {
-              listen 80;
-              server_name mecommerce.com;
-              return 301 https://\$host\$request_uri;
-          }
+          # Timpa total file nginx.conf
+          cat <<EOF > /etc/nginx/nginx.conf
+          user nginx;
+          worker_processes auto;
+          events { worker_connections 1024; }
 
-          server {
-              listen 443 ssl;
-              server_name mecommerce.com;
+          http {
+              include       /etc/nginx/mime.types;
+              default_type  application/octet-stream;
 
-              ssl_certificate /etc/nginx/ssl/server.crt;
-              ssl_certificate_key /etc/nginx/ssl/server.key;
+              server {
+                  listen 80;
+                  server_name _;
+                  return 301 https://\$host\$request_uri;
+              }
 
-              # Use AWS DNS Resolver
-              resolver 10.0.0.2 valid=10s;
+              server {
+                  listen 443 ssl;
+                  server_name _;
 
-              location / {
-                  # Use variable for dynamic resolution (prevents crash on start)
-                  set \$upstream http://app.mecommerce.com:3000;
-                  proxy_pass \$upstream;
-                  
-                  proxy_set_header Host \$host;
-                  proxy_set_header X-Real-IP \$remote_addr;
-                  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                  proxy_set_header X-Forwarded-Proto \$scheme;
+                  ssl_certificate /etc/nginx/ssl/server.crt;
+                  ssl_certificate_key /etc/nginx/ssl/server.key;
+
+                  location / {
+                      proxy_pass http://localhost:3000;
+                      proxy_http_version 1.1;
+                      proxy_set_header Upgrade \$http_upgrade;
+                      proxy_set_header Connection 'upgrade';
+                      proxy_set_header Host \$host;
+                      proxy_cache_bypass \$http_upgrade;
+                  }
               }
           }
           EOF
           
-          # Remove default config
-          rm -f /etc/nginx/conf.d/default.conf
-          
-          # Start Nginx
-          systemctl  restart nginx
-          systemctl enable nginx
+          # Restart Nginx
+          systemctl restart nginx
+          systemctl enable nginx          
 
 Outputs:
   WebsiteURL:
     Description: Access your website here
-    Value: !Sub 'https://${ProxyServer.PublicIp}'
-  AppServerPrivateIP:
-    Value: !GetAtt AppServer.PrivateIp
-  ProxyServerPublicIP:
-    Value: !GetAtt ProxyServer.PublicIp
+    Value: !Sub 'https://${AppServer.PublicIp}'
+  AppServerPublicIP:
+    Value: !GetAtt AppServer.PublicIp
+  DBEndpoint:
+    Value: !GetAtt DBInstance.Endpoint.Address

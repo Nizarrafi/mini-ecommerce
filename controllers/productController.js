@@ -76,6 +76,21 @@ const productController = {
             let image_url = existingProduct.image_url;
 
             if (req.file) {
+                // Delete old image if it exists before uploading new one
+                if (existingProduct.image_url) {
+                    try {
+                        const oldUrl = new URL(existingProduct.image_url);
+                        const oldKey = decodeURIComponent(oldUrl.pathname.substring(1));
+                        await s3.deleteObject({
+                            Bucket: process.env.AWS_BUCKET_NAME,
+                            Key: oldKey
+                        }).promise();
+                        console.log("Old S3 Image Deleted (Update Cleanup):", oldKey);
+                    } catch (delErr) {
+                        console.error("Failed to delete old image during update:", delErr.message);
+                    }
+                }
+
                 const params = {
                     Bucket: process.env.AWS_BUCKET_NAME,
                     Key: `products/${Date.now()}_${req.file.originalname}`,

@@ -38,6 +38,7 @@ const productController = {
                 try {
                     const uploadResult = await s3.upload(params).promise();
                     image_url = uploadResult.Location;
+                    console.log("S3 Image Uploaded (Create):", image_url);
                 } catch (s3Err) {
                     console.error("S3 Upload Error:", s3Err);
                 }
@@ -85,6 +86,7 @@ const productController = {
                 try {
                     const uploadResult = await s3.upload(params).promise();
                     image_url = uploadResult.Location;
+                    console.log("S3 Image Uploaded (Update):", image_url);
                 } catch (s3Err) {
                     console.error("S3 Upload Error:", s3Err);
                 }

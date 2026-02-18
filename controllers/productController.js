@@ -105,21 +105,21 @@ const productController = {
             // 1. Get product to find the S3 image key
             const product = await Product.getById(id);
             if (product && product.image_url) {
-                // Extract key from URL (https://bucket.s3.region.amazonaws.com/key)
-                const urlParts = product.image_url.split("/");
-                const key = urlParts.slice(3).join("/"); // Get everything after domain
-
-                const params = {
-                    Bucket: process.env.AWS_BUCKET_NAME,
-                    Key: key
-                };
-
                 try {
+                    const url = new URL(product.image_url);
+                    // Standard S3 URL: https://bucket.s3.region.amazonaws.com/key
+                    // Path: /key (leading slash should be removed)
+                    const key = decodeURIComponent(url.pathname.substring(1));
+
+                    const params = {
+                        Bucket: process.env.AWS_BUCKET_NAME,
+                        Key: key
+                    };
+
                     await s3.deleteObject(params).promise();
                     console.log("S3 Image Deleted:", key);
                 } catch (s3Err) {
-                    console.error("Error deleting image from S3:", s3Err);
-                    // Continue even if S3 delete fails? Usually yes, to keep DB in sync
+                    console.error("Error deleting from S3:", s3Err.message);
                 }
             }
 
